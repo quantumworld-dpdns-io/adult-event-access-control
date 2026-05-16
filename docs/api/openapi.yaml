@@ -1,0 +1,1057 @@
+openapi: 3.1.0
+info:
+  title: aeV — Adult Event Access Control API
+  description: |
+    Privacy-respecting event access API with zero-knowledge age proofs,
+    multi-auth (World ID, OAuth, SIWE), and anti-transfer credentials.
+  version: 0.1.0
+  contact:
+    name: aeV Team
+    url: https://github.com/quantumworld-dpdns-io/adult-event-access-control
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.aev.example.com
+    description: Production
+
+tags:
+  - name: Auth
+    description: Authentication endpoints (OAuth, SIWE, World ID)
+  - name: Events
+    description: Event CRUD operations
+  - name: Tickets
+    description: Ticket issuance, retrieval, transfer
+  - name: Check-in
+    description: Venue check-in and attendee listing
+  - name: ZK
+    description: Zero-knowledge proof generation and verification
+  - name: Admin
+    description: Administrative endpoints
+  - name: Analytics
+    description: Fraud detection and analytics
+
+paths:
+  # ===========================================================================
+  # AUTH
+  # ===========================================================================
+  /api/auth/oauth:
+    post:
+      tags: [Auth]
+      summary: Authenticate via OAuth (Google / GitHub)
+      description: |
+        Exchange an OAuth authorization code for a JWT. The code is obtained
+        via the provider's frontend OAuth flow.
+      operationId: authOAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, code]
+              properties:
+                provider:
+                  type: string
+                  enum: [google, github]
+                  description: OAuth provider
+                code:
+                  type: string
+                  description: Authorization code from provider
+                state:
+                  type: string
+                  description: CSRF state parameter (GitHub)
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: OAuth redirect URI (Google)
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/siwe:
+    post:
+      tags: [Auth]
+      summary: Authenticate via Sign-In with Ethereum (EIP-4361)
+      description: |
+        Verify a SIWE message and signature, recover the signing Ethereum
+        address, and issue a JWT.
+      operationId: authSIWE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, signature]
+              properties:
+                message:
+                  type: string
+                  description: SIWE message (EIP-4361 format)
+                signature:
+                  type: string
+                  description: Hex-encoded Ethereum signature
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/world-id:
+    post:
+      tags: [Auth]
+      summary: Authenticate via World ID
+      description: |
+        Verify a World ID proof (proof of personhood via Orb verification)
+        and issue a JWT. The nullifier_hash uniquely identifies the user
+        and is reused for Sybil resistance.
+      operationId: authWorldID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nullifier_hash, proof]
+              properties:
+                nullifier_hash:
+                  type: string
+                  description: World ID nullifier hash
+                proof:
+                  type: string
+                  description: World ID proof (merkle proof JSON)
+                merkle_root:
+                  type: string
+                  description: Optional merkle root override
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      description: |
+        Returns the authenticated user's profile information.
+        Requires a valid Bearer JWT in the Authorization header.
+      operationId: authMe
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ===========================================================================
+  # EVENTS
+  # ===========================================================================
+  /api/events:
+    get:
+      tags: [Events]
+      summary: List events
+      description: |
+        Retrieve published events with optional filtering by category.
+      operationId: listEvents
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by event category
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [published, draft, cancelled, completed]
+            default: published
+          description: Filter by event status
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Event"
+    post:
+      tags: [Events]
+      summary: Create an event
+      description: |
+        Create a new event. The authenticated user becomes the organizer.
+      operationId: createEvent
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventRequest"
+      responses:
+        "201":
+          description: Event created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/events/{id}:
+    get:
+      tags: [Events]
+      summary: Get event by ID
+      operationId: getEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Events]
+      summary: Update an event
+      description: |
+        Update event details. Only the organizer can update their events.
+      operationId: updateEvent
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventRequest"
+      responses:
+        "200":
+          description: Event updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Events]
+      summary: Delete an event
+      description: |
+        Delete an event. Only the organizer can delete their events.
+      operationId: deleteEvent
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Event deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # TICKETS
+  # ===========================================================================
+  /api/events/{eventId}/tickets:
+    post:
+      tags: [Tickets]
+      summary: Issue a ticket
+      description: |
+        Issue a ticket for an event. Requires a valid ZK age proof commitment.
+        The proof is verified by the Wasmtime-embedded Barretenberg verifier
+        before the ticket is created.
+      operationId: issueTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueTicketRequest"
+      responses:
+        "201":
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Age verification failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: age verification failed
+        "409":
+          description: Ticket already exists or event full
+
+  /api/tickets/{id}:
+    get:
+      tags: [Tickets]
+      summary: Get ticket by ID
+      operationId: getTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/my/tickets:
+    get:
+      tags: [Tickets]
+      summary: Get my tickets
+      description: |
+        Returns all tickets owned by the authenticated user.
+        QR secrets are redacted for security.
+      operationId: myTickets
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User's tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ticket"
+
+  /api/tickets/{id}/transfer:
+    post:
+      tags: [Tickets]
+      summary: Transfer a ticket
+      description: |
+        Transfer a ticket to another user. Requires ZK proofs from both
+        the sender and recipient to verify age and anti-transfer credentials.
+      operationId: transferTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferTicketRequest"
+      responses:
+        "200":
+          description: Ticket transferred
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: transferred
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # CHECK-IN
+  # ===========================================================================
+  /api/checkin:
+    post:
+      tags: [Check-in]
+      summary: Check in with a ticket
+      description: |
+        Verify a ticket QR secret and mark the ticket as checked in.
+        Records the check-in method (QR code, NFC, or manual) and
+        confirms the ZK proof was verified at issuance time.
+      operationId: checkIn
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_secret, method]
+              properties:
+                qr_secret:
+                  type: string
+                  description: QR secret from the ticket
+                method:
+                  type: string
+                  enum: [qr, nfc, manual]
+                  description: Check-in method
+      responses:
+        "200":
+          description: Check-in successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: checked_in
+                  ticket_id:
+                    type: string
+                    format: uuid
+        "404":
+          description: Ticket not found or already used
+
+  /api/events/{eventId}/attendees:
+    get:
+      tags: [Check-in]
+      summary: List event attendees
+      description: |
+        Returns the list of ticket holders and their check-in status
+        for a given event.
+      operationId: listAttendees
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of attendees
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Attendee"
+
+  # ===========================================================================
+  # ZK PROVER
+  # ===========================================================================
+  /api/zk/generate-proof:
+    post:
+      tags: [ZK]
+      summary: Generate a ZK proof
+      description: |
+        Request the Rust ZK Prover service to generate a proof for the
+        specified circuit type (Noir or RISC Zero).
+      operationId: generateProof
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [circuit_type, inputs]
+              properties:
+                circuit_type:
+                  type: string
+                  enum: [noir, risc0]
+                  description: Which proving backend to use
+                inputs:
+                  type: object
+                  description: Circuit-specific inputs
+      responses:
+        "200":
+          description: Proof generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: proof_generated
+                  circuit_type:
+                    type: string
+                  proof:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/zk/verify:
+    post:
+      tags: [ZK]
+      summary: Verify a ZK proof
+      description: |
+        Verify a ZK proof against its circuit type. Uses the Wasmtime-embedded
+        Barretenberg verifier for Noir proofs, or the RISC Zero verifier.
+      operationId: verifyProof
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [proof, circuit_type]
+              properties:
+                proof:
+                  type: string
+                  description: The proof to verify
+                circuit_type:
+                  type: string
+                  enum: [noir, risc0]
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified:
+                    type: boolean
+                    example: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/zk/generate-age-proof:
+    post:
+      tags: [ZK]
+      summary: Generate an age proof (Noir circuit)
+      description: |
+        Generate a zero-knowledge age proof using the Noir circuit.
+        Proves that the user's age is at least min_age without revealing
+        the exact birthdate.
+      operationId: generateAgeProof
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [birthdate, min_age]
+              properties:
+                birthdate:
+                  type: string
+                  format: date
+                  description: User's birthdate (YYYY-MM-DD)
+                  example: "1990-01-01"
+                min_age:
+                  type: integer
+                  minimum: 0
+                  description: Minimum age to prove
+                  example: 18
+      responses:
+        "200":
+          description: Age proof generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  proof:
+                    type: string
+                  circuit_type:
+                    type: string
+                    example: noir
+                  public_outputs:
+                    type: object
+                    properties:
+                      is_over_age:
+                        type: boolean
+                      min_age_verified:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ===========================================================================
+  # ADMIN
+  # ===========================================================================
+  /api/admin/stats:
+    get:
+      tags: [Admin]
+      summary: Get system-wide statistics
+      description: |
+        Returns aggregate counts across the entire platform.
+        Requires admin authentication.
+      operationId: getAdminStats
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Platform statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /api/admin/events/{id}/analytics:
+    get:
+      tags: [Admin]
+      summary: Get event analytics
+      description: |
+        Returns detailed analytics for a specific event, including
+        ticket counts, transfer ratios, and check-in statistics.
+      operationId: getEventAnalytics
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Event analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event_id:
+                    type: string
+                    format: uuid
+                  total_tickets:
+                    type: integer
+                  total_transfers:
+                    type: integer
+                  transfer_ratio:
+                    type: number
+                    format: float
+                  checked_in:
+                    type: integer
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # ANALYTICS (Julia Service)
+  # ===========================================================================
+  /api/analytics/overview:
+    get:
+      tags: [Analytics]
+      summary: Get analytics overview
+      description: |
+        Returns aggregate analytics including transfer rates,
+        anomaly detection results, and check-in statistics.
+        Served by the Julia Analytics service.
+      operationId: getAnalyticsOverview
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Analytics overview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_tickets:
+                    type: integer
+                  total_transfers:
+                    type: integer
+                  transfer_rate:
+                    type: number
+                    format: float
+                  checked_in:
+                    type: integer
+                  anomalies:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Anomaly"
+
+  /api/analytics/sybil/{userId}:
+    get:
+      tags: [Analytics]
+      summary: Get Sybil resistance score for a user
+      description: |
+        Calculates a Sybil resistance score (0 = trusted, 1 = suspicious)
+        based on World ID verification status, event attendance patterns,
+        and ticket transfer history.
+      operationId: getSybilScore
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sybil score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SybilScore"
+
+  /api/analytics/anomalies:
+    get:
+      tags: [Analytics]
+      summary: Detect anomalies
+      description: |
+        Run anomaly detection across all events. Returns events with
+        abnormal transfer ratios and rapid check-in patterns.
+      operationId: getAnomalies
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Detected anomalies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  anomalies:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Anomaly"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from one of the auth endpoints.
+        Include as: `Authorization: Bearer <token>`
+
+  schemas:
+    AuthResponse:
+      type: object
+      required: [token, user_id]
+      properties:
+        token:
+          type: string
+          description: JWT access token (expires in 24 hours)
+        user_id:
+          type: string
+          format: uuid
+          description: Authenticated user ID
+        display_name:
+          type: string
+          description: User display name (if available)
+
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        venue_name:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        capacity:
+          type: integer
+        min_age:
+          type: integer
+        status:
+          type: string
+          enum: [draft, published, cancelled, completed]
+        category:
+          type: string
+
+    CreateEventRequest:
+      type: object
+      required: [title, capacity, start_time, end_time]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        venue_name:
+          type: string
+        venue_address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        capacity:
+          type: integer
+          minimum: 1
+        min_age:
+          type: integer
+          default: 18
+          minimum: 0
+        image_url:
+          type: string
+          format: uri
+        category:
+          type: string
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        ticket_type:
+          type: string
+          enum: [standard, vip, early_bird]
+        status:
+          type: string
+          enum: [active, checked_in, refunded, transferred, cancelled]
+        qr_secret:
+          type: string
+          description: QR secret (only returned on issue; redacted on list)
+        issued_at:
+          type: string
+          format: date-time
+        checked_in_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    IssueTicketRequest:
+      type: object
+      required: [zk_proof_commitment, ticket_type]
+      properties:
+        zk_proof_commitment:
+          type: string
+          description: ZK age proof commitment hash
+        nullifier_hash:
+          type: string
+          description: World ID nullifier for anti-Sybil
+        ticket_type:
+          type: string
+          enum: [standard, vip, early_bird]
+          default: standard
+
+    TransferTicketRequest:
+      type: object
+      required: [to_user_id, zk_proof_from, zk_proof_to]
+      properties:
+        to_user_id:
+          type: string
+          format: uuid
+          description: Recipient user ID
+        zk_proof_from:
+          type: string
+          description: Sender's ZK proof commitment
+        zk_proof_to:
+          type: string
+          description: Recipient's ZK proof commitment
+
+    Attendee:
+      type: object
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        status:
+          type: string
+          enum: [active, checked_in, refunded, transferred, cancelled]
+        checked_in:
+          type: string
+          format: date-time
+          nullable: true
+
+    AdminStats:
+      type: object
+      properties:
+        total_users:
+          type: integer
+        total_events:
+          type: integer
+        total_tickets:
+          type: integer
+        total_checkins:
+          type: integer
+
+    SybilScore:
+      type: object
+      properties:
+        sybil_score:
+          type: number
+          format: float
+          description: 0.0 (trusted) to 1.0 (suspicious)
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+        has_world_id:
+          type: boolean
+        events_attended:
+          type: integer
+
+    Anomaly:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [high_transfer_ratio, rapid_checkin]
+          description: Type of anomaly detected
+        event_id:
+          type: string
+          format: uuid
+        score:
+          type: number
+          format: float
+        severity:
+          type: string
+          enum: [low, medium, high]
+        transfer_ratio:
+          type: number
+          format: float
+        check_in_index:
+          type: integer
+        gap_seconds:
+          type: number
+          format: float
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: invalid body
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: unauthorized
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: not found
