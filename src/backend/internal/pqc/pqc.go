@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"fmt"
 )
 
 // MLKEM provides ML-KEM (Kyber) post-quantum KEM operations (stub)
