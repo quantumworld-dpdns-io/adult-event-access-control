@@ -1,0 +1,65 @@
+services:
+  postgres:
+    build:
+      context: ../src/db
+      dockerfile: Dockerfile
+    container_name: aev-postgres
+    environment:
+      POSTGRES_USER: aev
+      POSTGRES_PASSWORD: aev_secret
+      POSTGRES_DB: aev_events
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../src/db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aev -d aev_events"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ../src/backend
+      dockerfile: Dockerfile
+    container_name: aev-backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: aev
+      DB_PASSWORD: aev_secret
+      DB_NAME: aev_events
+      ZK_PROVER_ADDR: "http://localhost:3002"
+      JWT_SECRET: change-me-in-production
+      WORLD_ID_APP_ID: app_staging
+      WORLD_ID_ACTION: aev-age-verification
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../src/zk-prover/target/release:/zk-prover-bin
+
+  julia-analytics:
+    build:
+      context: ../src/analytics
+      dockerfile: Dockerfile
+    container_name: aev-analytics
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: aev
+      DB_PASSWORD: aev_secret
+      DB_NAME: aev_events
+      PORT: 8090
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
