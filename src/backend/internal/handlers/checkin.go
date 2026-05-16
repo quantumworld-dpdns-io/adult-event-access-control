@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 type CheckInHandler struct {
@@ -82,7 +83,7 @@ func (h *CheckInHandler) attendees(w http.ResponseWriter, r *http.Request) {
 	var attendees []map[string]any
 	for rows.Next() {
 		var id, name, status string
-		var checkedIn *time
+		var checkedIn *time.Time
 		if err := rows.Scan(&id, &name, &status, &checkedIn); err != nil {
 			continue
 		}

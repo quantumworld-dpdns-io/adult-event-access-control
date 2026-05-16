@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"net/http"
 	"time"
 )
 
@@ -13,6 +15,12 @@ func nullIf(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
 }
 
 // Placeholder — in production this calls Wasmtime-embedded verifier

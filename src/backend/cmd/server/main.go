@@ -49,7 +49,7 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(database)
 	adminHandler.RegisterRoutes(mux)
 
-	wrapped := middleware.CORS(middleware.Logger(mux))
+	wrapped := middleware.CORS(middleware.Logger(middleware.Auth(mux)))
 
 	port := getEnv("PORT", "8080")
 	log.Printf("aeV backend listening on :%s", port)

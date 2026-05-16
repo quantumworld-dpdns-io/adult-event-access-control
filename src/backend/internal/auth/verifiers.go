@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -41,7 +42,7 @@ func issueToken(userID string) (string, error) {
 	return token.SignedString(jwtSecret)
 }
 
-func verifyToken(raw string) (string, error) {
+func VerifyToken(raw string) (string, error) {
 	token, err := jwt.Parse(raw, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
