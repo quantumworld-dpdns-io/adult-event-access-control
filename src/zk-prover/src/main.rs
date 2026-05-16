@@ -94,7 +94,7 @@ async fn health(data: web::Data<Mutex<AppState>>) -> HttpResponse {
         status: "ok".into(),
         version: env!("CARGO_PKG_VERSION").into(),
         noir_available: state.noir_ready,
-        risc0_ready: state.risc0_ready,
+        risc0_available: state.risc0_ready,
         verifier_ready: state.verifier_ready,
     })
 }

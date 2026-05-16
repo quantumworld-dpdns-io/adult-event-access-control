@@ -1,4 +1,4 @@
-use log::{info, warn, error};
+use log::{info, warn};
 
 /// Verifies a Noir proof using a pre-compiled Wasm verifier module.
 ///
