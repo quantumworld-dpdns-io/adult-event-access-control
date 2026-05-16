@@ -1,0 +1,50 @@
+# Choreo workload descriptors for aeV
+version: 1.0
+
+workloads:
+  - name: backend
+    type: Service
+    dockerfile: src/backend/Dockerfile
+    buildContext: src/backend
+    port: 8080
+    env:
+      - DB_HOST
+      - DB_PORT
+      - DB_USER
+      - DB_PASSWORD
+      - DB_NAME
+      - JWT_SECRET
+      - WORLD_ID_APP_ID
+      - WORLD_ID_ACTION
+      - PORT
+
+  - name: julia-analytics
+    type: Service
+    dockerfile: src/analytics/Dockerfile
+    buildContext: src/analytics
+    port: 8090
+    env:
+      - DB_HOST
+      - DB_PORT
+      - DB_USER
+      - DB_PASSWORD
+      - DB_NAME
+      - PORT
+
+  - name: zk-prover
+    type: Service
+    dockerfile: src/zk-prover/Dockerfile
+    buildContext: src/zk-prover
+    port: 3002
+    env:
+      - ZK_PROVER_HOST
+      - ZK_PROVER_PORT
+      - RISC0_PROVER_MODE
+
+  - name: frontend
+    type: WebApplication
+    dockerfile: src/frontend/Dockerfile
+    buildContext: src/frontend
+    port: 3000
+    env:
+      - NEXT_PUBLIC_API_URL

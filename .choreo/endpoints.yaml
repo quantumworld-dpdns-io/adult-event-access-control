@@ -1,0 +1,44 @@
+# Choreo endpoint definitions for aeV
+# Each component exposes one or more endpoints.
+version: 1.0
+
+endpoints:
+  - name: backend
+    type: REST
+    port: 8080
+    contextPath: /api
+    healthCheck:
+      path: /health
+      interval: 10
+      timeout: 3
+      retries: 3
+
+  - name: julia-analytics
+    type: REST
+    port: 8090
+    contextPath: /analytics
+    healthCheck:
+      path: /health
+      interval: 10
+      timeout: 3
+      retries: 3
+
+  - name: zk-prover
+    type: REST
+    port: 3002
+    contextPath: /prove
+    healthCheck:
+      path: /health
+      interval: 10
+      timeout: 3
+      retries: 3
+
+  - name: frontend
+    type: WebApp
+    port: 3000
+    contextPath: /
+    healthCheck:
+      path: /
+      interval: 15
+      timeout: 5
+      retries: 3

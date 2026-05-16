@@ -1,0 +1,24 @@
+spin_manifest_version = 2
+name = "aev-edge-checkin"
+version = "0.1.0"
+description = "Edge check-in microservice for venue entry"
+
+[[trigger.http]]
+route = "/checkin"
+method = "POST"
+executor = { type = "wagi" }
+
+[[trigger.http]]
+route = "/verify"
+method = "POST"
+executor = { type = "wagi" }
+
+[[trigger.http]]
+route = "/health"
+method = "GET"
+executor = { type = "wagi" }
+
+[component.aev-checkin]
+source = "target/wasm32-wasi/release/aev_edge_checkin.wasm"
+key_value_stores = ["default"]
+http = true
