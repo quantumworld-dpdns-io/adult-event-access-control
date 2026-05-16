@@ -30,7 +30,6 @@ services:
       DB_USER: aev
       DB_PASSWORD: aev_secret
       DB_NAME: aev_events
-      ZK_PROVER_ADDR: "http://localhost:3002"
       JWT_SECRET: change-me-in-production
       WORLD_ID_APP_ID: app_staging
       WORLD_ID_ACTION: aev-age-verification
@@ -40,8 +39,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ../src/zk-prover/target/release:/zk-prover-bin
 
   julia-analytics:
     build:
@@ -60,6 +57,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ../src/frontend
+      dockerfile: Dockerfile
+    container_name: aev-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
 
 volumes:
   pgdata:
