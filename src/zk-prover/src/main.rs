@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
 mod noir_prover;
+mod pqc;
 mod risc0_prover;
 mod verifier;
 
@@ -206,6 +207,71 @@ async fn prove_anti_transfer(req: web::Json<AntiTransferRequest>) -> Result<Http
     }
 }
 
+#[derive(Serialize)]
+struct PQCKeypairResponse {
+    success: bool,
+    public_key: String,
+    secret_key: String,
+    algorithm: String,
+}
+
+async fn pqc_keypair() -> HttpResponse {
+    let (pk, sk) = pqc::MLDSA::keypair();
+    HttpResponse::Ok().json(PQCKeypairResponse {
+        success: true,
+        public_key: hex::encode(&pk),
+        secret_key: hex::encode(&sk),
+        algorithm: "ML-DSA-65".into(),
+    })
+}
+
+#[derive(Deserialize)]
+struct PQCSignRequest {
+    message: String,
+    secret_key: String,
+}
+
+#[derive(Serialize)]
+struct PQCSignResponse {
+    success: bool,
+    signature: String,
+}
+
+async fn pqc_sign(req: web::Json<PQCSignRequest>) -> Result<HttpResponse, ServiceError> {
+    let sk = hex::decode(&req.secret_key)
+        .map_err(|e| ServiceError::InvalidInput(format!("invalid hex secret key: {}", e)))?;
+    let sig = pqc::MLDSA::sign(&sk, req.message.as_bytes());
+    Ok(HttpResponse::Ok().json(PQCSignResponse {
+        success: true,
+        signature: hex::encode(&sig),
+    }))
+}
+
+#[derive(Deserialize)]
+struct PQCVerifyRequest {
+    message: String,
+    signature: String,
+    public_key: String,
+}
+
+#[derive(Serialize)]
+struct PQCVerifyResponse {
+    success: bool,
+    verified: bool,
+}
+
+async fn pqc_verify(req: web::Json<PQCVerifyRequest>) -> Result<HttpResponse, ServiceError> {
+    let pk = hex::decode(&req.public_key)
+        .map_err(|e| ServiceError::InvalidInput(format!("invalid hex public key: {}", e)))?;
+    let sig = hex::decode(&req.signature)
+        .map_err(|e| ServiceError::InvalidInput(format!("invalid hex signature: {}", e)))?;
+    let verified = pqc::MLDSA::verify(&pk, req.message.as_bytes(), &sig);
+    Ok(HttpResponse::Ok().json(PQCVerifyResponse {
+        success: true,
+        verified,
+    }))
+}
+
 async fn not_found() -> HttpResponse {
     HttpResponse::NotFound().json(serde_json::json!({
         "error": "NOT_FOUND",
@@ -241,6 +307,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/verify", web::post().to(verify))
             .route("/api/prove-age", web::post().to(prove_age))
             .route("/api/prove-anti-transfer", web::post().to(prove_anti_transfer))
+            .route("/api/pqc/keypair", web::get().to(pqc_keypair))
+            .route("/api/pqc/sign", web::post().to(pqc_sign))
+            .route("/api/pqc/verify", web::post().to(pqc_verify))
             .default_service(web::route().to(not_found))
     })
     .bind("0.0.0.0:3002")?
